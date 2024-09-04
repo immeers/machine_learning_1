@@ -1,0 +1,208 @@
+---
+title: "Linear Regression Assignment"
+author: "Mendoza College of Business"
+date: "02/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set Up
+
+```{r}
+library(ggplot2)
+load("nba_data.rda") # Load data
+```
+
+
+The dataset we are using contains statistics on NBA games from 2010 to 2021, the features in the data are:
+
+The statistics calculated are:
+
+* fgm - Field goals made
+* fga - Field goals attempted
+* fg3m - 3 point shots made
+* fg3a - 3 point shots attempted
+* fg2m - 2 point shots made
+* fg2a - 2 point shots attempted
+* ftm - Free throws made
+* fta - Free throws attempted
+* oreb - Offensive rebounds
+* dreb - Defensive rebounds
+* treb - Total rebounds
+* ast - Assists
+* stl - Steals
+* blk - Blocks
+* tov - Turnovers
+* pf - Personal fouls
+* pts - Points scored
+* pctfg - Field goal percentage
+* pctfg2 - 2 point field goal percentage
+* pctfg3 - 3 point field goal percentage
+* pctft - Free throw percentage
+
+These are calculated for the different aspects of the matchup denoted by the following adjustments to the variable names:
+
+* _1_off - Offensive stats for team 1 in previous games
+* _1_def - Defensive stats for team 1 in previous games (That is stats from team 1's opponents)
+* _2_off - Offensive stats for team 2 in previous games
+* _2_def - Defensive stats for team 2 in previous games (That is stats from team 2's opponents)
+
+There is also an ELO rating function which can be used to provide a ranking of the teams:
+
+https://medium.com/purple-theory/what-is-elo-rating-c4eb7a9061e0
+
+The objective of our analysis is to determine the key factors involved in winning NBA games, so we will use point differential as our response variable.
+
+```{r}
+# Create response variable
+nba_data$point_diff <- nba_data$team_1_points - nba_data$team_2_points
+```
+
+Before running the model we want to drop all of the unique identifiers for the games and the points used to calculate the differential:
+
+```{r}
+# Drop columns categorical
+nba_model <- nba_data[,c(8:91, 94:96)]
+```
+
+
+# Assignment
+
+Please complete the following tasks and answer the following questions:
+
+
+* 1 - Create two visualizations which may reveal interesting relationships in the dataset. Describe what you see in the visualization. (2 Points) 
+
+```{r}
+g_1 <- ggplot(nba_model, # Set dataset 
+              aes(y = point_diff, # Set y-axis as insurance charges 
+                  x = fga_1_off)) + # Set x-axis as age.
+  geom_point(color = "blue", alpha = 0.3) + # Use geom_point to get scatter plot
+  geom_smooth(method = "lm") + # Add smoothing line
+  theme_bw() + # Set theme for plot
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(y = "Point Differential", # Set plot labels
+       x = "FGA 1 Game Before",
+       title = "Point Diff v FGA 1 Game Before")
+
+g_1 # Generate plot
+```
+There is seemingly no relationship between point differential and the field goals attempted 1 game before.
+
+```{r}
+g_2 <- ggplot(nba_model, # Set dataset 
+              aes(y = point_diff, # Set y-axis as insurance charges 
+                  x = pts_1_def)) + # Set x-axis as age.
+  geom_point(color = "blue", alpha = 0.3) + # Use geom_point to get scatter plot
+  geom_smooth(method = "lm") + # Add smoothing line
+  theme_bw() + # Set theme for plot
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(y = "Point Differential", # Set plot labels
+       x = "Pts Against 1 Game Before",
+       title = "Point Diff v Pts Against 1 Game Before")
+
+g_2 # Generate plot
+```
+There is a very weak negative relationship between points against in the game before and point diff.
+
+* 2 - Run a linear regression model on the dataset using `point_diff` as the response variable and all other variables in the model data as explanatory variables. (1 Point)
+
+```{r}
+fit1 <- lm(point_diff ~ ., data = nba_model)
+
+
+```
+
+
+
+* 3 - What features in the model were significant (At 0.1% level)? Do these variables have a positive or negative effect on a teams change of winning a game? (1 Point)
+
+```{r}
+
+summary(fit1)
+p_values <- summary(fit1)$coefficients[, "Pr(>|t|)"]
+significant_terms <- summary(fit1)$coefficients[p_values < 0.001, ]
+significant_terms
+
+
+```
+
+dreb_1_off, stl_1_off, ast_2_def and elo_1 have a postiive effect.
+tov_1_off, ast_1_de and elo_2 have a negative effect.
+
+
+* 4 - Visualize two potential interaction terms and their relationship with the response variable. Are these interaction terms likely to have a significant relationship with the response variable? (2 Points)
+
+```{r}
+# Create plot
+g_2 <- ggplot(nba_model, # Set dataset 
+              aes(y = point_diff,
+                  color = cut(ast_1_off,3), # Set y-axis 
+                  x = oreb_1_off)) + # Set x-axis 
+  geom_point(color = "blue", alpha = 0.3) + # Use geom_point to get scatter plot
+  geom_smooth(method = "lm") + # Add smoothing line
+  theme_bw() + # Set theme for plot
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(y = "Points diff", # Set plot labels
+       x = "Off Reb 1 game ago",
+       title = "Rebs and Assists",
+       color = "Off Assists 1 game ago")
+
+g_2 # Generate plot
+```
+When there is a high number of offensive assists 1 game ago, the offensive rebounds from 1 game ago will have a mildly positive effect on point diff. When there are a mid-low number of offensive assists 1 game ago the offensive rebounds from 1 game ago have a mildly negative effect. The interaction between assists 1 game ago and offensive rebs 1 game ago can change the relationship with the points diff.
+```{r}
+# Create plot
+g_1 <- ggplot(nba_model, # Set dataset 
+              aes(x = tov_1_off,
+                  color = cut(tov_2_off,3), # Set y-axis 
+                  y = point_diff)) + # Set x-axis 
+  geom_point(color = "blue", alpha = 0.3) + # Use geom_point to get scatter plot
+  geom_smooth(method = "lm") + # Add smoothing line
+  theme_bw() + # Set theme for plot
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+        
+  labs(x = "turnovers off 1 game before", # Set plot labels
+       y = "point diff",
+       title = "Offensive Turnovers",
+       color = "turnovers off 2 games before")
+
+g_1 # Generate plot
+```
+When there is a high number of offensive turnovers 2 games ago, the offensive turnovers from 1 game ago will have a mildly positive effect on point diff. When there are a mid-low number of offensive turnovers 2 games ago the offensive trunovers from 1 game ago have a mildly negative effect. The interaction between turnovers 1 game vs 2 games ago can change the relationship with the points diff.
+
+
+
+* 5 - Fit a linear regression model with the two interaction terms included. (1 Point)
+
+```{r}
+fit2 <- lm(point_diff ~ . + tov_1_off * tov_2_off * ast_1_off * oreb_1_off, nba_model)
+
+summary(fit2)
+p_values <- summary(fit2)$coefficients[, "Pr(>|t|)"]
+significant_terms2 <- summary(fit2)$coefficients[p_values < 0.001, ]
+significant_terms2
+```
+
+
+* 6 - How has the inclusion of the interaction terms affected the coefficients in the model? How has the inclusion of interaction terms affected the model fit? (1 Point)
+
+The inclusion of interaction terms increased the R^2 value very slightly by 0.002 but none of the interaction terms were significant at a 0.1% significant level. It also decreased the number of other vars that were significant (tov_1_off is no longer significant) but did not change the direction of their coefficients.
+
+
+2 Points for code quality and analysis decisions.
