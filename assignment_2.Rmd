@@ -1,0 +1,198 @@
+---
+title: "Assignment 2 - Logistic Regression"
+author: "ITAO 40420 - Machine Learning"
+date: "29 January 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2) # load ggplot
+library(reshape) # load reshape 2
+library(glmnet) # Load glmnet
+library(plotmo) # for plot_glmnet
+library(tidyr)
+```
+
+# Assignment 2
+
+For this analysis we will be using churn data. The dataset is stored as `churn_data.rda` which can be loaded in by running the below command if the file is located in your working directory or else by accessing the file through file->open file
+
+```{r Load Data 2}
+load("churn_data.rda") # Load churn dataset
+```
+
+We can view a summary of this dataset by running `summary()`:
+
+```{r}
+summary(churn_data)
+```
+
+The variables we have are:
+
+* Gender - Whether the customer is a male or a female
+* SeniorCitizen - Whether the customer is a senior citizen or not (1,0)
+* Partner - Whether the customer has a partner or nor (Yes, No)
+* Dependents - Whether the customer has dependents or not (Yes, No)
+* tenure - Number of months the customer has stayed with the company
+* PhoneService - Whether the customer has a phone service of no (Yes, No)
+* MultipleLines - Whether the customer has multiple lines or not (Yes, No, No phone service)
+* InternetService - Customer's internet service provider (DSL, Fiber optic, No)
+* OnlineSecurity - Whether the customer has online security or not (Yes, No, No internet service)
+* OnlineBackup - Whether the customer has online backup or not (Yes, No, No internet service)
+* DeviceProtection - Whether the customer has tech support or not (Yes, No, No internet service)
+* StreamingTV - Whether the customer has streaming TV or not (Yes, No, No internet service)
+* StreamingMovies - Whether the customer has streaming movies or not (Yes, No, No internet service)
+* Contract - The contract term of the customer (Month-to-month, One year, Two year)
+* PaperlessBilling - Whether the customer has paperless billing or not (Yes, No)
+* PaymentMethod - The customer's payment method (Electronic CHECK, Mailed check, Bank transfer (automatic), Credit card (automatic))
+* MonthlyCharges - The amount charged to the customer monthly
+* TotalCharges - The total amount charged to the customer
+* Churn - Whether the customer churned or not (1 = Yes or 0 = No)
+
+
+The response variable for this dataset is `Churn`:
+
+```{r}
+summary(as.factor(churn_data$Churn))
+
+plot_data <- churn_data
+plot_data$Churn <- as.factor(churn_data$Churn)
+g_1 <- ggplot(plot_data, aes(x = tenure, fill = Churn)) + # Set x as mean radius and fill as diagnosis
+  geom_density(alpha = 0.5) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Tenure", title = "Tenure - Churn vs Not",
+       fill = "Churn") + # Set labels
+  scale_fill_manual(values = c("1" = "red", "0" = "blue"), # Set fill colors manually
+                    labels = c("1" = "Churned", "0" = "Didn't churn")) # Set labels for fill
+g_1 # Generate plot
+```
+This would be an ok predictor as there is some distinction at the tail ends, however there is lots of overlap in the middle
+
+```{r}
+g_2 <- ggplot(plot_data, aes(x = MonthlyCharges, fill = Churn)) + # Set x as mean radius and fill as diagnosis
+  geom_density(alpha = 0.5) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "monthlyCharges", title = "monthlyCharges - Churn vs Not",
+       fill = "Churn") + # Set labels
+  scale_fill_manual(values = c("1" = "red", "0" = "blue"), # Set fill colors manually
+                    labels = c("1" = "Churned", "0" = "Didn't churn")) # Set labels for fill
+g_2 # Generate plot
+
+
+```
+
+This wouldn't be a great predictor as there is overlap the whole way through for both
+
+```{r}
+fit_1 <- glm(Churn ~ ., # Set formula
+             family=binomial(link='logit'), # Set logistic regression
+             data= churn_data) # Set dataset
+summary(fit_1) # Sumamrize model
+
+p_values <- summary(fit_1)$coefficients[, "Pr(>|z|)"]
+significant_terms <- summary(fit_1)$coefficients[p_values < 0.001, ]
+
+#Significant terms
+significant_terms
+
+#AIC: 5874.272
+AIC(fit_1)
+
+```
+
+
+```{r}
+fit_2 <- glm(Churn ~ . +tenure * TotalCharges, # Set formula
+             family=binomial(link='logit'), # Set logistic regression
+             data= churn_data) # Set dataset
+summary(fit_2) # Sumamrize model
+
+AIC(fit_2)
+```
+The addition of interaction term was significant and decreased AIC from 5874 to 5849.
+```{r Lasso}
+library(dplyr)
+x_data <- churn_data %>% mutate_at(c(5, 18, 19), funs(c(scale(.))))
+
+
+x_data$Churn <- churn_data$Churn    
+x_vars <- model.matrix(Churn ~.,  #model.matrix converts categorical data into binary columns 
+                       x_data)[,-1] #dropping col1 because it's an constant intercept col of 1s, don't want that
+
+
+# Fit lasso model
+lasso_fit <- glmnet(x = x_vars, # Set explantory variables
+                    y = churn_data$Churn, # Set response variable
+                    alpha = 1, # Set alpha value
+                    family = "binomial")
+
+
+set.seed(123)
+# Set sequence of lambda values
+lambda_seq <- 10^seq(4, -4, by = -.1)
+# Fit cross-validated lasso model
+cv.lasso <- cv.glmnet(x = x_vars, # Set x variables
+                 y = churn_data$Churn, # Set response variables
+                 alpha = 1, # Set alpha = 1 for lasso
+                 family = "binomial", # Set family as binomial for logistic regression
+                 lambda = lambda_seq, # Set lambda values to try
+                 nfolds = 10)
+best_lam <- cv.lasso$lambda.1se # Extract best lambda
+best_lam  # Print best lambda
+
+lasso_fit_final <- glmnet(x = x_vars, # Set explantory variables
+                    y = churn_data$Churn, # Set response variable
+                    alpha = 1, # Set alpha as 1 for lasso
+                    family = "binomial", # Set as logistic regression
+                    lambda = best_lam) # Set lambda as best lambda
+
+
+temp <- cbind.data.frame(coef(fit_1), as.vector(coef(lasso_fit_final))) # Join Coefficients from models
+names(temp) <- c("LogisiticRegression", "LogisticLasso") # Name coefficient columns
+rownames(temp) <- names(coef(fit_1)) # Add rownames to coefficients
+temp # Print coefficients 
+
+#Non zero
+temp[temp$LogisticLasso != 0,]
+pos <- temp[temp$LogisticLasso > 0,]
+neg <- temp[temp$LogisticLasso < 0,]
+
+
+#These are positive coefficients which means if they are present, there is an increased probability of "churning"
+pos
+
+#These are negative coefficients which means if they are present, there is an decreased probability of "churning"
+neg
+
+
+
+```
+
+
+For the assignment please carry out the following tasks/answer the following questions: (12 Points)
+
+
+* 1 - Create at least two visualizations potentially revealing factors with predictive power (2 Points)
+* 2 - Fit a logistic regression model to the data. (Remember you can use `resp ~.,` to include all explanatory variables in the model) (2 Points)
+* 3 - What features are significant in your logistic regression model? (1 Point)
+* 4 - What is the AIC of your logistic regression model?  (1 Point)
+* 5 - Add an interaction term to the logistic regression model? (1 Point)
+* 6 - Does the addition of the interaction term increase or decrease the AIC? What is the new AIC for the model? (1 Point)
+* 7 - Fit a lasso logistic regression model to the data. (1 Point)
+* 8 - Which coefficients were non-zero in the lasso model? Were they positive or negative? What does this imply? (1 Point)
+
+2 Points for analysis decisions and code quality.
+
+Please submit an an R-markdown document with the answers, optionally you can submit an R-script with the code used for your analysis and a document answering the specific questions, you can use word, pdf etc.
+
+Assignments can be submitted via Canvas or by email to mbarron2@nd.edu. 
+
